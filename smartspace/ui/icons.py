@@ -1,13 +1,46 @@
-"""Тонкие линейные иконки в духе Lucide: один контур, толщина 2, круглые концы.
+"""Настоящие иконки Lucide (ISC License, (c) Lucide Contributors).
 
-Рисуются кодом (24x24, stroke=currentColor) и растрируются через QtSvg —
-чёткие на любом размере, перекрашиваются под тему без ассетов.
+SVG-файлы лежат в assets/icons/ и перекрашиваются через currentColor.
+Встроенный словарь _ICONS — offline-fallback, если файла нет рядом.
+Толщина единая — 2, круглые концы.
 """
 from __future__ import annotations
+
+import os
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
+
+ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icons")
+
+# Логическое имя -> файл (часть Lucide переименована: house->home, ellipsis->more)
+_FILES: dict[str, str] = {
+    "search": "search.svg",
+    "home": "home.svg",
+    "sparkles": "sparkles.svg",
+    "layers": "layers.svg",
+    "sliders": "sliders.svg",
+    "shuffle": "shuffle.svg",
+    "skip-back": "skip-back.svg",
+    "skip-forward": "skip-forward.svg",
+    "play": "play.svg",
+    "pause": "pause.svg",
+    "repeat": "repeat.svg",
+    "maximize": "maximize.svg",
+    "heart": "heart.svg",
+    "x": "x.svg",
+    "check": "check.svg",
+    "info": "info.svg",
+    "more": "more.svg",
+    "trash": "trash.svg",
+    "shield": "shield.svg",
+    "zap": "zap.svg",
+    "code": "code.svg",
+    "message": "message.svg",
+    "folder": "folder.svg",
+    "chevron-down": "chevron-down.svg",
+}
 
 # Каждый элемент: (тег, атрибуты). fill по умолчанию none.
 _ICONS: dict[str, list[tuple[str, dict[str, str]]]] = {
@@ -111,12 +144,40 @@ _ICONS: dict[str, list[tuple[str, dict[str, str]]]] = {
     "chevron-down": [("path", {"d": "m6 9 6 6 6-6"})],
 }
 
+def _bundle_icon_dir() -> str:
+    """Папка иконок внутри собранного exe (PyInstaller datas)."""
+    import sys
+
+    meipass = getattr(sys, "_MEIPASS", "")
+    if meipass:
+        cand = os.path.join(meipass, "smartspace", "ui", "assets", "icons")
+        if os.path.isdir(cand):
+            return cand
+    return ""
+
+
 _cache: dict[tuple, QPixmap] = {}
 
 
 def _svg_source(name: str, color: str, stroke: float) -> bytes:
+    # 1) Настоящий Lucide-файл: подменяем currentColor и толщину
+    fname = _FILES.get(name, f"{name}.svg")
+    for base in (ICON_DIR, _bundle_icon_dir()):
+        if not base:
+            continue
+        path = os.path.join(base, fname)
+        if os.path.isfile(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    text = f.read()
+                text = text.replace("currentColor", color)
+                text = text.replace('stroke-width="2"', f'stroke-width="{stroke:g}"')
+                return text.encode("utf-8")
+            except OSError:
+                pass
+    # 2) Fallback: встроенный упрощённый контур
     parts = []
-    for tag, attrs in _ICONS[name]:
+    for tag, attrs in _ICONS.get(name, _ICONS["info"]):
         a = dict(attrs)  # копия: глобальные данные иконок мутировать нельзя
         fill = a.pop("fill", "none")
         stroke_attr = a.pop("stroke", None)

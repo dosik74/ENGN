@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('srift', 'srift')],
+    datas=[('srift', 'srift'), ('smartspace/ui/assets/icons', 'smartspace/ui/assets/icons')],
     hiddenimports=['send2trash', 'psutil'],
     hookspath=[],
     hooksconfig={},
