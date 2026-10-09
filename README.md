@@ -17,6 +17,21 @@ python main.py
 - Python 3.11+, Windows 10/11.
 - Зависимости (`requirements.txt`): `PySide6`, `send2trash`, `psutil`.
 
+## Web-вариант (pywebview, прототип)
+
+Тот же движок (`scanner`, `analyzer`, `trash`), интерфейс — HTML/CSS/JS в нативном окне.
+Нужен установленный Microsoft Edge WebView2 Runtime (в Windows 10/11 обычно уже есть).
+
+```powershell
+pip install -r requirements-web.txt
+python main_web.py
+```
+
+Архитектура: JS вызывает `pywebview.api.*` (`webui/bridge.py`), длинные операции
+(скан/очистка/анализ) идут в фоновых потоках, фронт опрашивает состояние
+(`scan_state` / `clean_state` / `analyze_state` / `log_poll`) — `evaluate_js`
+из потоков не используется. Работают Главная и Поиск; остальное пока заглушки.
+
 ## Готовый exe
 
 ```powershell

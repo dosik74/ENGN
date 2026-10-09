@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SmartSpace</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <aside id="side">
+    <div class="logo">SmartSpace</div>
+    <nav id="nav">
+      <button class="nav" data-page="search"><span class="ic"></span>Поиск</button>
+      <button class="nav active" data-page="home"><span class="ic"></span>Главная</button>
+      <button class="nav" data-page="recs"><span class="ic"></span>Рекомендации</button>
+      <button class="nav" data-page="library"><span class="ic"></span>Библиотека</button>
+      <button class="nav" data-page="settings"><span class="ic"></span>Настройки</button>
+    </nav>
+    <div class="cap">Коллекции</div>
+    <div id="colls"></div>
+    <div class="foot">В Корзину по умолчанию.<br>Без галочки не трогаем.</div>
+  </aside>
+
+  <main id="main">
+    <section id="page-home" class="page active">
+      <div class="bg"><div class="bg-a"></div><div class="bg-b"></div><div class="glow"></div></div>
+      <header class="top">
+        <span class="top-sp"></span>
+        <h2>Главная</h2>
+        <span class="top-sp"></span>
+        <span class="user"><span class="ava">C</span><span id="statusText">…</span></span>
+      </header>
+      <div class="mid">
+        <div id="cloud"></div>
+        <div class="center">
+          <h1 id="hero">SmartSpace</h1>
+          <div class="transport">
+            <div id="cover"></div>
+            <button class="tc" data-act="shuffle" title="Автовыбор безопасных"></button>
+            <button class="tc" data-act="prev" title="Предыдущая категория"></button>
+            <button class="tc main" data-act="play" title="Старт / стоп сканирования"><span id="playGlyph"></span></button>
+            <button class="tc" data-act="next" title="Следующая категория"></button>
+            <button class="tc" data-act="repeat" title="Пересканировать"></button>
+          </div>
+          <button id="pill">Нажми play — найдём мусор</button>
+          <div class="rounds">
+            <button class="rd" data-act="open" title="Открыть папку"></button>
+            <button class="rd" data-act="safe" title="Только безопасные"></button>
+            <button class="rd" data-act="clear" title="Снять выбор"></button>
+            <button class="rd" data-act="details" title="Подробнее"></button>
+            <button class="rd" data-act="trash" title="В Корзину"></button>
+          </div>
+        </div>
+      </div>
+      <footer class="hint"><span id="spark"></span><span id="hintText">Сканирование ничего не удаляет — всё уходит в Корзину.</span><button id="logToggle">Закрыть</button></footer>
+    </section>
+
+    <section id="page-search" class="page">
+      <header class="phead">
+        <h2>Поиск по кэшам</h2>
+        <span class="sp"></span>
+        <select id="riskSel">
+          <option value="all">Все уровни риска</option>
+          <option value="Safe">Безопасно</option>
+          <option value="Moderate">Умеренно</option>
+          <option value="Advanced">Осторожно</option>
+        </select>
+        <select id="groupSel"><option value="all">Все группы</option></select>
+      </header>
+      <input id="searchInput" placeholder="Поиск по кэшам: например, Telegram, npm, шейдеры…">
+      <div class="toolbar">
+        <button class="btn ghost" id="btnRescan">Пересканировать</button>
+        <button class="btn ghost" id="btnSafe">Выбрать только безопасные</button>
+        <button class="btn ghost" id="btnAll">Выбрать всё</button>
+        <button class="btn ghost" id="btnNone">Снять выбор</button>
+        <span class="sp"></span>
+        <span id="selLbl" class="muted">Выбрано: 0 Б</span>
+      </div>
+      <div id="cards"></div>
+      <div id="actionbar">
+        <button id="cleanBtn" class="btn primary">Выбрать кэши выше ↑</button>
+        <button id="permBtn" class="btn danger">Удалить навсегда</button>
+        <span class="sp"></span>
+        <span id="cleanStatus" class="muted"></span>
+      </div>
+    </section>
+
+    <section id="page-soon" class="page">
+      <div class="soon">
+        <h2 id="soonTitle">Раздел</h2>
+        <p id="soonText">В web-прототипе работают Главная и Поиск. Остальное — в десктопной версии (python main.py).</p>
+      </div>
+    </section>
+
+    <div id="bottom">
+      <div class="prow"><span id="readyLbl" class="muted">Готов</span><div class="pbar"><div id="pfill"></div><span id="ppct">0%</span></div></div>
+      <div id="log"></div>
+    </div>
+  </main>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
