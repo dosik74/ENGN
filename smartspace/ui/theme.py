@@ -12,7 +12,7 @@ APP_VERSION = "2.0"
 BG_APP = "#0B0B0B"
 BG_SIDEBAR = "#0B0B0B"
 TEXT_MAIN = "#FFFFFF"
-TEXT_DIM = "#8A8A8A"
+TEXT_DIM = "#A7AEB8"
 YELLOW = "#FFE600"
 
 GRAD_LEFT = "#0B0B0B"
@@ -44,8 +44,8 @@ TRANSPORT_SIDE = 48
 TRANSPORT_MAIN = 64
 ROUND_BTN = 40
 PILL_RADIUS = 30
-HERO_MAX = 72
-HERO_MIN = 40
+HERO_MAX = 64
+HERO_MIN = 36
 CLOUD_ICON = 56
 
 HOVER_MS = 180
@@ -99,6 +99,8 @@ QLabel#collName {{ color: {TEXT_MAIN}; font-size: 12.5px; font-weight: 500; }}
 
 /* Заголовки сцены */
 QLabel#sectionTitle {{ font-size: 15px; font-weight: 600; color: {TEXT_MAIN}; }}
+QLabel#pageTitle {{ font-size: 20px; font-weight: 700; color: #FFFFFF; }}
+QLabel#kicker {{ font-size: 11.5px; font-weight: 700; color: {YELLOW}; }}
 QLabel#statusText {{ font-size: 12px; color: {TEXT_DIM}; }}
 QLabel#hint {{ font-size: 12px; color: {TEXT_DIM}; }}
 

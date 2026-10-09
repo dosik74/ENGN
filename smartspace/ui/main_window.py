@@ -35,6 +35,7 @@ from ..system_info import get_disk_info, list_drives, special_files_report
 from ..trash import CleanStats
 from ..utils import copy_to_clipboard, format_bytes, format_count, open_in_explorer
 from ..workers import AnalyzerWorker, CleanWorker, ScanWorker
+from . import icons
 from .sidebar import Sidebar, avatar_pixmap
 from .stage import StageWidget
 from .theme import palette_for_group
@@ -57,6 +58,7 @@ class MainWindow(QMainWindow):
         self.analyzer_result: AnalyzerResult | None = None
         self._focus_id: str = "windows_temp"
         self._log_visible = True
+        self._cleaning = False
 
         self._build_chrome()
         self._build_home()
@@ -68,7 +70,9 @@ class MainWindow(QMainWindow):
         self._refresh_drives()
         self._refresh_dashboard()
         self.set_stage_focus(self._focus_id, initial=True)
-        self.log("👋 SmartSpace готов. Жми play на сцене — это шаг 1 из трёх.")
+        self.stage.set_groups({})
+        self._refresh_hero()
+        self.log("👋 SmartSpace готов. Жми «Найти мусор» — это шаг 1 из трёх.")
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_dashboard)
@@ -138,48 +142,50 @@ class MainWindow(QMainWindow):
     # ================================================================== дом (сцена)
     def _build_home(self) -> None:
         self.stage = StageWidget()
-        self.stage.transport_pressed.connect(self._on_transport)
-        self.stage.round_pressed.connect(self._on_round)
-        self.stage.pill_pressed.connect(lambda: self._navigate("search"))
+        self.stage.primary_pressed.connect(self._on_primary)
+        self.stage.safe_pressed.connect(self._select_safe)
+        self.stage.step_pressed.connect(self._on_step)
+        self.stage.focus_prev.connect(lambda: self._cycle_focus(-1))
+        self.stage.focus_next.connect(lambda: self._cycle_focus(1))
+        self.stage.focus_open.connect(lambda: self._open_rule_folder(self._focus_id))
+        self.stage.focus_details.connect(self._show_focus_details)
+        self.stage.group_chosen.connect(self._on_group_chosen)
         self.stage.hint_closed.connect(self._toggle_log)
-        self.stage.cloud_focused.connect(self._on_cloud)
         self.stack.addWidget(self.stage)
 
-    def _on_transport(self, action: str) -> None:
-        if action == "play":
-            if self.scan_worker is not None and self.scan_worker.isRunning():
-                self.stop_scan()
-            else:
-                self.start_scan()
-        elif action == "repeat":
+    def _on_primary(self) -> None:
+        if self.scan_worker is not None and self.scan_worker.isRunning():
+            self.stop_scan()
+            return
+        if self._cleaning:
+            return
+        sel = sum(c.size for c in self.cards.values() if c.checked)
+        if self.scan_results and sel > 0:
+            self.start_clean(permanent=False)
+        elif not self.scan_results:
             self.start_scan()
-        elif action == "shuffle":
-            self._select_safe()
+        else:
             self._navigate("search")
-        elif action in ("prev", "next"):
-            self._cycle_focus(-1 if action == "prev" else 1)
 
-    def _on_round(self, action: str) -> None:
-        if action == "open":
-            self._open_rule_folder(self._focus_id)
-        elif action == "safe":
-            self._select_safe()
+    def _on_step(self, n: int) -> None:
+        if n == 1:
+            self.start_scan()
+        elif n == 2:
             self._navigate("search")
-        elif action == "clear":
-            self._select_none()
-        elif action == "details":
-            self._show_focus_details()
-        elif action == "trash":
+        elif n == 3:
             self.start_clean(permanent=False)
 
-    def _on_cloud(self, group: str) -> None:
+    def _on_group_chosen(self, group: str) -> None:
         cands = [r for r in RULES if r.group == group]
-        if not cands:
-            return
-        if self.scan_results:
-            cands.sort(key=lambda r: self.scan_results.get(r.id).size_bytes if self.scan_results.get(r.id) else -1,
-                       reverse=True)
-        self.set_stage_focus(cands[0].id)
+        if cands:
+            if self.scan_results:
+                cands.sort(key=lambda r: self.scan_results.get(r.id).size_bytes if self.scan_results.get(r.id) else -1,
+                           reverse=True)
+            self.set_stage_focus(cands[0].id)
+        idx = self.group_filter.findText(group)
+        if idx >= 0:
+            self.group_filter.setCurrentIndex(idx)
+        self._navigate("search")
 
     def _cycle_focus(self, step: int) -> None:
         ids = [r.id for r in RULES
@@ -198,15 +204,48 @@ class MainWindow(QMainWindow):
             return
         self._focus_id = rule_id
         res = self.scan_results.get(rule_id)
-        self.stage.set_hero(rule.title)
-        self.stage.set_cover_group(rule.group)
         if res is None:
-            self.stage.set_pill("Нажми play — найдём мусор" if initial else f"{rule.title} • ещё не сканировано")
+            sub = "Нажми «Найти мусор» — узнаем вес"
         elif res.size_bytes > 0:
-            self.stage.set_pill(f"{rule.title} • {format_bytes(res.size_bytes)}")
+            sub = f"{format_bytes(res.size_bytes)} • {format_count(res.file_count)} файлов"
         else:
-            self.stage.set_pill(f"{rule.title} • чисто")
+            sub = "Чисто — весит 0"
+        self.stage.set_focus(rule.title, sub, rule.group)
         self.stage.set_palette_key(palette_for_group(rule.group))
+
+    def _refresh_hero(self) -> None:
+        """Одно место правды для hero/CTA/степпера: состояние решает, что показать."""
+        scanning = self.scan_worker is not None and self.scan_worker.isRunning()
+        if self._cleaning:
+            self.stage.set_kicker("ШАГ 3 ИЗ 3 • ОЧИСТКА")
+            self.stage.set_hero("Уносим в Корзину…", "Файлы перемещаются. Занятые процессами пропускаем.")
+            self.stage.set_primary("Очистка…", None, False)
+            self.stage.set_step(3)
+            return
+        if scanning:
+            self.stage.set_kicker("ШАГ 1 ИЗ 3 • СКАНИРОВАНИЕ")
+            self.stage.set_hero("Ищем мусор…", "Смотрим кэши, шейдеры и временные файлы. Ничего не удаляем.")
+            self.stage.set_primary("Остановить", None, True)
+            self.stage.set_step(1)
+            return
+        if not self.scan_results:
+            self.stage.set_kicker("ШАГ 1 ИЗ 3 • СКАНИРОВАНИЕ")
+            self.stage.set_hero("Найди, что съедает диск",
+                                "Сканирование ничего не удаляет. Дальше отметишь нужное — унесём в Корзину.")
+            self.stage.set_primary("Найти мусор", "search", True)
+            self.stage.set_step(1)
+            return
+        total = sum(r.size_bytes for r in self.scan_results.values())
+        safe = sum(r.size_bytes for r in self.scan_results.values() if r.risk == "Safe")
+        sel = sum(c.size for c in self.cards.values() if c.checked)
+        self.stage.set_kicker("ШАГ 2 ИЗ 3 • ВЫБОР")
+        self.stage.set_hero(f"Найдено {format_bytes(total)}",
+                            f"Безопасно: {format_bytes(safe)} • Выбрано: {format_bytes(sel)}")
+        if sel > 0:
+            self.stage.set_primary(f"Освободить {format_bytes(sel)} → в Корзину", "trash", True)
+        else:
+            self.stage.set_primary("Перейти к выбору", "search", True)
+        self.stage.set_step(2)
 
     def _show_focus_details(self) -> None:
         self._navigate("search")
@@ -238,7 +277,7 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         t = QLabel("Поиск по кэшам")
-        t.setStyleSheet("font-size: 20px; font-weight: 700;")
+        t.setObjectName("pageTitle")
         header.addWidget(t)
         header.addStretch(1)
         self.risk_filter = QComboBox()
@@ -261,20 +300,24 @@ class MainWindow(QMainWindow):
         lay.addWidget(self.search_box)
 
         toolbar = QHBoxLayout()
-        rescan = QPushButton("↻ Пересканировать")
+        rescan = QPushButton("Пересканировать")
         rescan.setObjectName("ghost")
+        rescan.setIcon(icons.icon("repeat", 16, "#FFFFFF"))
         rescan.clicked.connect(self.start_scan)
         toolbar.addWidget(rescan)
         sel_safe = QPushButton("Выбрать только безопасные")
         sel_safe.setObjectName("ghost")
+        sel_safe.setIcon(icons.icon("shield", 16, "#FFFFFF"))
         sel_safe.clicked.connect(self._select_safe)
         toolbar.addWidget(sel_safe)
         sel_all = QPushButton("Выбрать всё")
         sel_all.setObjectName("ghost")
+        sel_all.setIcon(icons.icon("check", 16, "#FFFFFF"))
         sel_all.clicked.connect(self._select_all)
         toolbar.addWidget(sel_all)
         sel_none = QPushButton("Снять выбор")
         sel_none.setObjectName("ghost")
+        sel_none.setIcon(icons.icon("x", 16, "#FFFFFF"))
         sel_none.clicked.connect(self._select_none)
         toolbar.addWidget(sel_none)
         toolbar.addStretch(1)
@@ -311,14 +354,16 @@ class MainWindow(QMainWindow):
         actions = QHBoxLayout(bar)
         actions.setContentsMargins(14, 12, 14, 12)
         actions.setSpacing(10)
-        self.clean_trash_btn = QPushButton("🧹 Выбрать кэши выше ↑")
+        self.clean_trash_btn = QPushButton("Выбрать кэши выше ↑")
         self.clean_trash_btn.setObjectName("primary")
         self.clean_trash_btn.setCursor(Qt.PointingHandCursor)
+        self.clean_trash_btn.setIcon(icons.icon("trash", 18, "#111111"))
         self.clean_trash_btn.clicked.connect(lambda: self.start_clean(permanent=False))
         actions.addWidget(self.clean_trash_btn)
         self.clean_perm_btn = QPushButton("Удалить навсегда")
         self.clean_perm_btn.setObjectName("danger")
         self.clean_perm_btn.setCursor(Qt.PointingHandCursor)
+        self.clean_perm_btn.setIcon(icons.icon("trash", 16, "#FFD9D6"))
         self.clean_perm_btn.clicked.connect(lambda: self.start_clean(permanent=True))
         actions.addWidget(self.clean_perm_btn)
         actions.addStretch(1)
@@ -337,7 +382,7 @@ class MainWindow(QMainWindow):
         lay.setSpacing(10)
         lay.setContentsMargins(18, 16, 18, 12)
         t = QLabel("Рекомендации")
-        t.setStyleSheet("font-size: 20px; font-weight: 700;")
+        t.setObjectName("pageTitle")
         lay.addWidget(t)
         sub = QLabel("Только безопасные категории с ненулевым размером — то, что можно чистить не глядя.")
         sub.setObjectName("muted")
@@ -351,8 +396,9 @@ class MainWindow(QMainWindow):
         apply_btn.setObjectName("ghost")
         apply_btn.clicked.connect(self._apply_recs)
         row.addWidget(apply_btn)
-        clean_btn = QPushButton("🧹 Очистить выбранное")
+        clean_btn = QPushButton("Очистить выбранное")
         clean_btn.setObjectName("primary")
+        clean_btn.setIcon(icons.icon("trash", 18, "#111111"))
         clean_btn.clicked.connect(lambda: self.start_clean(permanent=False))
         row.addWidget(clean_btn)
         row.addStretch(1)
@@ -394,7 +440,7 @@ class MainWindow(QMainWindow):
 
         header = QHBoxLayout()
         t = QLabel("Библиотека: тяжёлые файлы и папки")
-        t.setStyleSheet("font-size: 20px; font-weight: 700;")
+        t.setObjectName("pageTitle")
         header.addWidget(t)
         header.addStretch(1)
         header.addWidget(QLabel("Диск/папка:"))
@@ -453,7 +499,7 @@ class MainWindow(QMainWindow):
         lay.setSpacing(10)
         lay.setContentsMargins(18, 16, 18, 12)
         t = QLabel("Настройки системы: спецфайлы и команды")
-        t.setStyleSheet("font-size: 20px; font-weight: 700;")
+        t.setObjectName("pageTitle")
         lay.addWidget(t)
         info = QLabel("hiberfil.sys и pagefile.sys удалять как файлы НЕЛЬЗЯ — только штатными командами.")
         info.setObjectName("muted")
@@ -568,17 +614,18 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, len(RULES))
         self.progress.setValue(0)
         self.status_lbl.setText("Сканирование…")
-        self.stage.set_playing(True)
         self.scan_worker = ScanWorker(self)
         self.scan_worker.progressed.connect(self._on_scan_progress)
         self.scan_worker.log_line.connect(self.log)
         self.scan_worker.finished_ok.connect(self._on_scan_done)
         self.scan_worker.start()
+        self._refresh_hero()
 
     def stop_scan(self) -> None:
         if self.scan_worker is not None and self.scan_worker.isRunning():
             self.scan_worker.stop()
             self.log("⏹ Остановка сканирования…")
+        self._refresh_hero()
 
     def _on_scan_progress(self, done: int, total: int, title: str) -> None:
         self.progress.setRange(0, total)
@@ -595,13 +642,13 @@ class MainWindow(QMainWindow):
                 card.set_scan(r.size_bytes, r.file_count, r.paths_found)
         self._update_selected()
         self._apply_card_filter()
-        self.stage.set_playing(False)
-        # Коллекции сайдбара
+        # Коллекции сайдбара + группы сцены
         stats: dict[str, tuple[int, int]] = {}
         for g in groups():
             items = [r for r in typed if r.group == g and r.paths_found]
             stats[g] = (len(items), sum(r.size_bytes for r in items))
         self.sidebar.set_collections(stats)
+        self.stage.set_groups(stats)
         self._refresh_recs()
         # Фокус на самую прожорливую
         big = [r for r in typed if r.size_bytes > 0]
@@ -609,6 +656,7 @@ class MainWindow(QMainWindow):
             big.sort(key=lambda r: r.size_bytes, reverse=True)
             self.set_stage_focus(big[0].rule_id)
         self._update_status()
+        self._refresh_hero()
         self.status_lbl.setText("Готов")
         self.progress.setValue(self.progress.maximum())
         self.log(f"📦 Итого: {format_bytes(total)} в {len(typed)} категориях.")
@@ -637,10 +685,12 @@ class MainWindow(QMainWindow):
         self.selected_lbl.setText(f"Выбрано: {format_bytes(total)} ({n} кат.)")
         if hasattr(self, "clean_trash_btn"):
             if total > 0:
-                self.clean_trash_btn.setText(f"🧹 Освободить {format_bytes(total)} → в Корзину")
+                self.clean_trash_btn.setText(f"Освободить {format_bytes(total)} → в Корзину")
             else:
-                self.clean_trash_btn.setText("🧹 Выбрать кэши выше ↑")
+                self.clean_trash_btn.setText("Выбрать кэши выше ↑")
         self._update_status()
+        if hasattr(self, "stage"):
+            self._refresh_hero()
 
     def _select_safe(self) -> None:
         for rid, card in self.cards.items():
@@ -737,6 +787,8 @@ class MainWindow(QMainWindow):
         self.clean_trash_btn.setEnabled(False)
         self.clean_perm_btn.setEnabled(False)
         self.clean_status.setText("Очистка выполняется…")
+        self._cleaning = True
+        self._refresh_hero()
         self.clean_worker = CleanWorker(sel, permanent=permanent, parent=self)
         self.clean_worker.log_line.connect(self.log)
         self.clean_worker.finished_ok.connect(lambda st: self._on_clean_done(st, permanent))
@@ -747,6 +799,7 @@ class MainWindow(QMainWindow):
         self.clean_perm_btn.setEnabled(True)
         self.clean_status.setText(f"Готово: ≈ {format_bytes(stats.freed_bytes_estimate)} • занятых пропущено: {stats.skipped_locked}")
         self.log("🔄 Обновляю цифры после очистки…")
+        self._cleaning = False
         self.start_scan()
         self.clean_worker = None
 

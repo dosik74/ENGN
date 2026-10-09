@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from ..config import CacheRule
 from ..utils import format_bytes, format_count
+from . import icons
 from .styles import ACCENT, ACCENT_DIM, TEXT_DIM
 
 
@@ -192,11 +193,13 @@ class CacheCard(QFrame):
         self.more_btn = QPushButton("Подробнее ▾")
         self.more_btn.setObjectName("ghost")
         self.more_btn.setCursor(Qt.PointingHandCursor)
+        self.more_btn.setIcon(icons.icon("info", 15, "#FFFFFF"))
         self.more_btn.clicked.connect(self._toggle_detail)
         btn_row.addWidget(self.more_btn)
         self.open_btn = QPushButton("Открыть папку")
         self.open_btn.setObjectName("ghost")
         self.open_btn.setCursor(Qt.PointingHandCursor)
+        self.open_btn.setIcon(icons.icon("maximize", 15, "#FFFFFF"))
         self.open_btn.clicked.connect(lambda: self.open_requested.emit(self.rule.id))
         btn_row.addWidget(self.open_btn)
         root.addLayout(btn_row)
